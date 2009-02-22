@@ -2243,7 +2243,7 @@ dfsch_object_t* dfsch_new_frame_from_hash(dfsch_object_t* parent,
   if (parent){
     parent = DFSCH_ASSERT_TYPE(parent, DFSCH_ENVIRONMENT_TYPE);
   }
-
+  
   e->parent = (environment_t*)parent;
     
   return (dfsch_object_t*)e;
@@ -2439,12 +2439,6 @@ static dfsch_object_t* dfsch_eval_impl(dfsch_object_t* exp,
   if (!exp) 
     return NULL;
 
-  if(DFSCH_TYPE_OF(exp) == SYMBOL){
-    ti->stack_frame->env = env;
-    ti->stack_frame->expr = exp;
-    return dfsch_lookup(exp, env);
-  }
-
   if(DFSCH_PAIR_P(exp)){
     
     object_t *f = DFSCH_FAST_CAR(exp);
@@ -2485,6 +2479,12 @@ static dfsch_object_t* dfsch_eval_impl(dfsch_object_t* exp,
     
     
   }  
+  if(DFSCH_TYPE_OF(exp) == SYMBOL){
+    ti->stack_frame->env = env;
+    ti->stack_frame->expr = exp;
+    return dfsch_lookup(exp, env);
+  }
+
   
   return exp;
 }
@@ -2610,33 +2610,33 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
                                         dfsch_object_t* args,
                                         tail_escape_t* esc,
                                         dfsch__thread_info_t* ti){
-  dfsch__stack_frame_t f;
+  //dfsch__stack_frame_t f;
   dfsch_object_t* r;
-  tail_escape_t myesc;
+  //  tail_escape_t myesc;
 
-  if (esc){
+  /*if (esc){
     esc->proc = proc;
     esc->args = args;
     longjmp(esc->ret,1);
-  }
+    }*/
 
-  f.next = ti->stack_frame;
+  /*  f.next = ti->stack_frame;
   f.env = NULL;
   f.expr = NULL;
   f.code = NULL;
-
-  if (setjmp(myesc.ret)){  
+  */
+  /*  if (setjmp(myesc.ret)){  
     proc = myesc.proc;
     args = myesc.args;
     f.tail_recursive = 1;
   } else {
     f.tail_recursive = 0;
-  }
+    }*/
 
 
-  f.procedure = proc;
+  /* f.procedure = proc;
   ti->stack_frame = &f;
-
+  */
   /*
    * Two most common cases are written here explicitly (for historical
    * and performance reasons)
@@ -2644,7 +2644,7 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
 
   if (DFSCH_TYPE_OF(proc) == PRIMITIVE){
     r = ((primitive_t*)proc)->proc(((primitive_t*)proc)->baton,args,
-                                   &myesc);
+                                   NULL/*&myesc*/);
     goto out;
 
   }
@@ -2656,20 +2656,20 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
     r = 
       dfsch_eval_proc_impl(((closure_t*)proc)->code,
                            env,
-                           &myesc,
+                           NULL, //&myesc,
                            ti);
     goto out;
   }
 
   if (DFSCH_TYPE_OF(proc)->apply){
-    r = DFSCH_TYPE_OF(proc)->apply(proc, args, &myesc);
+    r = DFSCH_TYPE_OF(proc)->apply(proc, args, NULL /*&myesc*/);
     goto out;
   }
 
   dfsch_error("Not a procedure", proc);
 
  out:
-  ti->stack_frame = f.next;
+  //ti->stack_frame = f.next;
   return r;
    
 }

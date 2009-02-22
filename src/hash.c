@@ -205,20 +205,22 @@ int dfsch_hash_ref_fast(dfsch_object_t* hash_obj,
   hash_entry_t *i;
   int j;
 
-  GET_HASH(hash_obj, hash){
+  hash = hash_obj;
+
+  /*  GET_HASH(hash_obj, hash){
     IMPLEMENTS(hash_obj, ref);
     return HASH_TYPE(hash_obj)->ref(hash_obj, key, res);
-  };
+    };*/
 
 #ifdef FH_DEPTH
   if (hash->vector == NULL){
     for (j = 0; j < FH_DEPTH; j++){
-      if (BIT_SET_P(hash->fh_valid, j)){
+      //if (BIT_SET_P(hash->fh_valid, j)){
         if (hash->fh_keys[j] == key){
           *res = hash->fh_values[j];
           return 1;
         }
-      }
+        //}
     }
     return 0;
   }
@@ -365,19 +367,19 @@ static void fh_promote(hash_t* hash){
 void dfsch_hash_put(dfsch_object_t* hash_obj,
                     dfsch_object_t* key,
                     dfsch_object_t* value){
-  hash_t *hash;
+  hash_t *hash = hash_obj;
   size_t h;
   int j;
 
-  GET_HASH(hash_obj, hash){
+  /* GET_HASH(hash_obj, hash){
     IMPLEMENTS(hash_obj, set);
     HASH_TYPE(hash_obj)->set(hash_obj, key, value);
     return;
-  };
+    };*/
 
   h = HASH(hash, key); 
 
-  DFSCH_RWLOCK_WRLOCK(&hash->lock);
+  //  DFSCH_RWLOCK_WRLOCK(&hash->lock);
 
 #ifdef FH_DEPTH
   if (hash->vector == NULL){
@@ -386,7 +388,7 @@ void dfsch_hash_put(dfsch_object_t* hash_obj,
         hash->fh_valid |= BIT(j);
         hash->fh_keys[j] = key;
         hash->fh_values[j] = value;
-        DFSCH_RWLOCK_UNLOCK(&hash->lock);
+        //DFSCH_RWLOCK_UNLOCK(&hash->lock);
         return;
       }
     }
@@ -408,7 +410,7 @@ void dfsch_hash_put(dfsch_object_t* hash_obj,
                                              value,
                                              hash->vector[h & hash->mask]);
   
-  DFSCH_RWLOCK_UNLOCK(&hash->lock);  
+  //  DFSCH_RWLOCK_UNLOCK(&hash->lock);  
 }
 
 void dfsch_hash_set(dfsch_object_t* hash_obj,
