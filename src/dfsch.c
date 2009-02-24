@@ -1,6 +1,6 @@
 /*
  * dfsch - Scheme-like Lisp dialect
- * Copyright (C) 2005-2008 Ales Hakl
+ * Copyright (C) 2005-2009 Ales Hakl
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1989,8 +1989,8 @@ dfsch_object_t* dfsch_list_2_vector(dfsch_object_t* list){
   return (object_t*)vector;
 }
 
-char* dfsch_obj_write(dfsch_object_t* obj, 
-                      int max_depth, int readable){
+char* dfsch_object_2_string(dfsch_object_t* obj, 
+                            int max_depth, int readable){
   str_list_t* sl = sl_create();
   dfsch_writer_state_t* state = dfsch_make_writer_state(max_depth,
                                                         readable?
@@ -2001,110 +2001,6 @@ char* dfsch_obj_write(dfsch_object_t* obj,
   dfsch_write_object(state, obj);
   return sl_value(sl);
 }
-
-
-struct dfsch_writer_state_t {
-  dfsch_object_t object_head;
-  dfsch_output_proc_t output_proc;
-  void* output_baton;
-  int depth;
-  int readability;
-};
-dfsch_type_t dfsch_writer_state_type = {
-  DFSCH_STANDARD_TYPE,
-  NULL,
-  sizeof(dfsch_writer_state_t),
-  "writer-state"
-};
-
-dfsch_writer_state_t* dfsch_make_writer_state(int max_depth,
-                                              int readability,
-                                              dfsch_output_proc_t proc,
-                                              void* baton){
-  dfsch_writer_state_t* state = 
-    (dfsch_writer_state_t*)dfsch_make_object(DFSCH_WRITER_STATE_TYPE);
-
-  state->output_proc = proc;
-  state->output_baton = baton;
-  state->depth = max_depth;
-  state->readability = readability;
-
-  return state;
-}
-void dfsch_invalidate_writer_state(dfsch_writer_state_t* state){
-  state->output_proc = NULL;
-  state->output_baton = NULL;
-}
-int dfsch_writer_state_print_p(dfsch_writer_state_t* state){
-  return state->readability == DFSCH_PRINT;
-}
-
-void dfsch_write_object(dfsch_writer_state_t* state,
-                        dfsch_object_t* object){
-  dfsch_type_t* type;
-  char* ret;
-
-  if (!object){
-    dfsch_write_string(state, "()");
-    return;
-  }
-
-  if (state->depth==0){
-    dfsch_write_string(state, "...");
-  }
-
-  type = DFSCH_TYPE_OF(object);
-
-  while (type){
-    if (type->write){
-      state->depth--;
-      type->write(object, state);
-      state->depth++;
-      return;
-    }
-    type = type->superclass;
-  }
-
-  dfsch_write_unreadable(state, object, "");
-}
-
-
-void dfsch_write_string(dfsch_writer_state_t* state,
-                        char* str){
-  dfsch_write_strbuf(state, str, strlen(str));
-}
-void dfsch_write_strbuf(dfsch_writer_state_t* state,
-                        char* str, size_t len){
-  if (state->output_proc){
-    state->output_proc(state->output_baton, str, len);
-  } else {
-    dfsch_error("Stale writer-state", state);
-  }
-}
-
-void dfsch_write_unreadable(dfsch_writer_state_t* state,
-                            dfsch_object_t* obj, char* format, ...){
-  str_list_t* sl = sl_create();
-  va_list args;
-  char *ret;
-  va_start(args, format);
-
-  dfsch_write_unreadable_start(state, obj);
-  dfsch_write_string(state, vsaprintf(format, args)); 
-  dfsch_write_unreadable_end(state);
-}
-void dfsch_write_unreadable_start(dfsch_writer_state_t* state,
-                                  dfsch_object_t* obj){
-  if (state->readability == DFSCH_STRICT_WRITE){
-    dfsch_error("Object has no readable representation", obj);
-  }
-  dfsch_write_string(state, 
-                     saprintf("#<%s %p ", DFSCH_TYPE_OF(obj)->name, obj));
-}
-void dfsch_write_unreadable_end(dfsch_writer_state_t* state){
-  dfsch_write_string(state, ">");
-}
-
 
 
 typedef struct read_ctx_t {
@@ -2126,7 +2022,7 @@ static read_callback(dfsch_object_t *obj, void* ctx){
   return 1;
 }
 
-dfsch_object_t* dfsch_list_read(char* str){
+dfsch_object_t* dfsch_string_2_object_list(char* str){
   dfsch_parser_ctx_t *parser = dfsch_parser_create();
   read_ctx_t ctx;
   int err;
@@ -2145,10 +2041,11 @@ dfsch_object_t* dfsch_list_read(char* str){
   
   return ctx.head;
 }
-dfsch_object_t* dfsch_obj_read(char* str){
-  object_t* list = dfsch_list_read(str);
-  if (!list)
-    return NULL;
+dfsch_object_t* dfsch_string_2_object(char* str){
+  object_t* list = dfsch_string_2_object_list(str);
+  if (!list) {
+    dfsch_error("Input empty", NULL);
+  }
   return dfsch_car(list);
 }
 
@@ -2228,20 +2125,19 @@ void dfsch_unset_property(dfsch_object_t* o,
   dfsch_unset_object_property(o, dfsch_make_symbol(name));
 }
 
+static dfsch_rwlock_t environment_rwlock = DFSCH_RWLOCK_INITIALIZER;
 
 
 dfsch_object_t* dfsch_new_frame(dfsch_object_t* parent){
-  return dfsch_new_frame_from_hash(parent, dfsch_hash_make(DFSCH_HASH_EQ));
-}
-dfsch_object_t* dfsch_new_frame_from_hash(dfsch_object_t* parent, 
-                                          dfsch_object_t* hash){
   environment_t* e = (environment_t*)dfsch_make_object(DFSCH_ENVIRONMENT_TYPE);
 
-  e->values = hash;
+  dfsch_eqhash_init(&e->values, 0);
   e->decls = NULL;
   
   if (parent){
     parent = DFSCH_ASSERT_TYPE(parent, DFSCH_ENVIRONMENT_TYPE);
+    ((environment_t*)parent)->is_shared = 1;
+    /* This could probably be placed somewhere else */
   }
   
   e->parent = (environment_t*)parent;
@@ -2255,7 +2151,10 @@ object_t* dfsch_lookup(object_t* name, object_t* env){
 
   i = DFSCH_ASSERT_TYPE(env, DFSCH_ENVIRONMENT_TYPE);
   while (i){
-    if (dfsch_hash_ref_fast(i->values, name, &ret)){
+    if (i->is_shared){
+      goto lock;
+    }
+    if (dfsch_eqhash_ref(&i->values, name, &ret, NULL, NULL)){
       return ret;
     }
     
@@ -2263,20 +2162,34 @@ object_t* dfsch_lookup(object_t* name, object_t* env){
   }
 
   dfsch_error("Unbound variable", dfsch_cons(name, env));
+ lock:
+   DFSCH_RWLOCK_RDLOCK(&environment_rwlock);
+  while (i){
+    if (dfsch_eqhash_ref(&i->values, name, &ret, NULL, NULL)){
+        DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+      return ret;
+    }
+    
+    i = i->parent;
+  }
+  DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+  dfsch_error("Unbound variable", dfsch_cons(name, env));
 }
 object_t* dfsch_env_get(object_t* name, object_t* env){
   environment_t *i;
+  object_t* ret;
 
   i = DFSCH_ASSERT_TYPE(env, DFSCH_ENVIRONMENT_TYPE);
+  DFSCH_RWLOCK_RDLOCK(&environment_rwlock);
   while (i){
-    object_t* ret = dfsch_hash_ref(i->values, name);
-    if (ret){
-      return ret;
+    if (dfsch_eqhash_ref(&i->values, name, &ret, NULL, NULL)){
+      DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+      return dfsch_cons(ret, NULL);
     }
 
     i = i->parent;
   }
-  
+  DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
   return NULL;
 }
 
@@ -2287,42 +2200,63 @@ object_t* dfsch_set(object_t* name, object_t* value, object_t* env){
   i = DFSCH_ASSERT_TYPE(env, DFSCH_ENVIRONMENT_TYPE);
 
   while (i){
-    if(dfsch_hash_set_if_exists(i->values, name, value))
+    if (i->is_shared){
+      goto lock;
+    }
+    if(dfsch_eqhash_set_if_exists(&i->values, name, value, NULL))
       return value;
 
     i = i->parent;
   }
 
   dfsch_error("Unbound variable",name);
+ lock:
+  
+  DFSCH_RWLOCK_WRLOCK(&environment_rwlock);
+  while (i){
+    if(dfsch_eqhash_set_if_exists(&i->values, name, value, NULL)){
+      DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+      return value;
+    }
+
+    i = i->parent;
+  }
+  DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+  dfsch_error("Unbound variable",name);
+
 }
 void dfsch_unset(object_t* name, object_t* env){
   environment_t *i;
 
   i = DFSCH_ASSERT_TYPE(env, DFSCH_ENVIRONMENT_TYPE);
+  DFSCH_RWLOCK_WRLOCK(&environment_rwlock);
   while (i){
     if (i->decls){
       dfsch_hash_unset(i->decls, name);
     }
-    if(dfsch_hash_unset(i->values, name))
+    if(dfsch_eqhash_unset(&i->values, name)){
+      DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
       return;
-
+    }
     i = i->parent;
   }
+  DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
   
   dfsch_error("Unbound variable",name);
 }
 
 
 object_t* dfsch_define(object_t* name, object_t* value, object_t* env){
-  if (env && DFSCH_TYPE_OF(env) != DFSCH_ENVIRONMENT_TYPE){
-    dfsch_error("Not an environment", env);
+  environment_t* e = (environment_t*)DFSCH_ASSERT_TYPE(env, 
+                                                       DFSCH_ENVIRONMENT_TYPE);
+  if (e->is_shared){
+    DFSCH_RWLOCK_WRLOCK(&environment_rwlock);
   }
-
-  dfsch_hash_set(((environment_t*)
-                  DFSCH_ASSERT_TYPE(env, 
-                                    DFSCH_ENVIRONMENT_TYPE))->values, 
-                 name, value);  
-
+  dfsch_eqhash_set(&e->values, 
+                   name, value);  
+  if (e->is_shared){
+    DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+  }
   return value;
 
 }
@@ -2500,13 +2434,13 @@ dfsch_object_t* dfsch_eval(dfsch_object_t* exp, dfsch_object_t* env){
 
 static void destructure_impl(dfsch_object_t* llist,
                              dfsch_object_t* list,
-                             dfsch_object_t* hash){
+                             environment_t* env){
   while (DFSCH_PAIR_P(llist) && DFSCH_PAIR_P(list)){
 
     if (DFSCH_TYPE_OF(DFSCH_FAST_CAR(llist)) != DFSCH_SYMBOL_TYPE){
       dfsch_type_error(DFSCH_FAST_CAR(llist), DFSCH_SYMBOL_TYPE, 0);
     } else {
-      dfsch_hash_put(hash, DFSCH_FAST_CAR(llist), DFSCH_FAST_CAR(list));
+      dfsch_eqhash_put(&env->values, DFSCH_FAST_CAR(llist), DFSCH_FAST_CAR(list));
     }
 
     llist = DFSCH_FAST_CDR(llist);
@@ -2515,7 +2449,7 @@ static void destructure_impl(dfsch_object_t* llist,
   }
 
   if (!DFSCH_PAIR_P(llist)){
-    dfsch_hash_put(hash, (object_t*)llist, (object_t*)list);
+    dfsch_eqhash_put(&env->values, (object_t*)llist, (object_t*)list);
     return;
   }
 
@@ -2533,19 +2467,19 @@ static void destructure_impl(dfsch_object_t* llist,
 
 dfsch_object_t* dfsch_destructure(dfsch_object_t* arglist,
                                   dfsch_object_t* list){
-  object_t* hash = dfsch_hash_make(DFSCH_HASH_EQ);
+  /*  object_t* hash = dfsch_hash_make(DFSCH_HASH_EQ);
 
   destructure_impl(arglist, list, hash);
 
-  return hash;
+  return hash;*/ // TODO
 }
 
 dfsch_object_t* dfsch_destructuring_bind(dfsch_object_t* arglist, 
                                          dfsch_object_t* list, 
                                          dfsch_object_t* env){
-  return dfsch_new_frame_from_hash(env,
-                                   dfsch_destructure(arglist,
-                                                     list));
+  environment_t* e = dfsch_new_frame(env);
+  destructure_impl(arglist, list, e);
+  return e;
 }
 
 static dfsch_object_t* dfsch_eval_proc_impl(dfsch_object_t* code, 

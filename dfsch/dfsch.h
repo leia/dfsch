@@ -86,7 +86,7 @@ extern "C" {
 
 #include <dfsch/number.h>
 #include <dfsch/types.h>
-  
+#include <dfsch/writer.h>  
 
   /** Create object of given type. */
   extern dfsch_object_t* dfsch_make_object(const dfsch_type_t* type);
@@ -164,44 +164,13 @@ extern "C" {
   extern int dfsch_vector_p(dfsch_object_t* obj);
 
   /** Parse string into object. */
-  extern dfsch_object_t* dfsch_obj_read(char* str);
+  extern dfsch_object_t* dfsch_string_2_object(char* str);
   /** Parse string into list of objects */
-  extern dfsch_object_t* dfsch_list_read(char* str);
+  extern dfsch_object_t* dfsch_string_2_object_list(char* str);
   
-  extern char* dfsch_obj_write(dfsch_object_t* obj, 
-                               int max_depth, int readable);
+  extern char* dfsch_object_2_string(dfsch_object_t* obj, 
+                                     int max_depth, int readable);
   
-
-#define DFSCH_WRITE_CIRCULAR -1
-#define DFSCH_STRICT_WRITE 0
-#define DFSCH_WRITE        1
-#define DFSCH_PRINT        2
-
-  extern dfsch_writer_state_t* dfsch_make_writer_state(int max_depth,
-                                                       int readability,
-                                                       dfsch_output_proc_t proc,
-                                                       void* baton);
-  extern void dfsch_invalidate_writer_state(dfsch_writer_state_t* state);
-  extern int dfsch_writer_state_print_p(dfsch_writer_state_t* state);
-  extern int dfsch_writer_state_pprint_p(dfsch_writer_state_t* state);
-  extern int dfsch_writer_state_cmark_p(dfsch_writer_state_t* state);
-  extern void dfsch_write_object(dfsch_writer_state_t* state,
-                                 dfsch_object_t* object);
-  extern void dfsch_write_string(dfsch_writer_state_t* state,
-                                 char* str);
-  extern void dfsch_write_strbuf(dfsch_writer_state_t* state,
-                                 char* str, size_t len);
-  extern void dfsch_write_unreadable(dfsch_writer_state_t* state,
-                                     dfsch_object_t* obj, 
-                                     char* format, ...);
-  extern void dfsch_write_unreadable_start(dfsch_writer_state_t* state,
-                                           dfsch_object_t* obj);
-  extern void dfsch_write_unreadable_end(dfsch_writer_state_t* state);
-  extern void dfsch_write_pprint_newline(dfsch_writer_state_t* state);
-  extern void dfsch_write_pprint_indent(dfsch_writer_state_t* state);
-  extern void dfsch_write_pprint_begin(dfsch_writer_state_t* state);
-  extern void dfsch_write_pprint_end(dfsch_writer_state_t* state);
-
   /** Returns empty list, equivalent to NULL */
   extern dfsch_object_t* dfsch_nil();
 

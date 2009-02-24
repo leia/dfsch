@@ -18,7 +18,6 @@ nobase_include_HEADERS = dfsch/lib/threads.h \
 	dfsch/magic.h \
 	dfsch/object.h\
 	dfsch/weak.h\
-	dfsch/pprint.h\
 	dfsch/format.h\
 	dfsch/ports.h\
 	dfsch/load.h \
@@ -26,7 +25,9 @@ nobase_include_HEADERS = dfsch/lib/threads.h \
 	dfsch/bignum.h \
 	dfsch/conditions.h \
 	dfsch/introspect.h \
-	dfsch/random.h
+	dfsch/random.h \
+	dfsch/writer.h \
+	dfsch/eqhash.h
 
 lib_LTLIBRARIES = libdfsch.la \
 	libdfsch-console.la \
@@ -66,13 +67,14 @@ libdfsch_la_SOURCES = src/dfsch.c dfsch/dfsch.h src/types.h src/internal.h\
 	src/wrapper.c dfsch/wrapper.h 	\
 	src/object.c dfsch/object.h	\
 	src/weak.c dfsch/weak.h		\
-	src/pprint.c dfsch/pprint.h	\
 	src/format.c dfsch/format.h	\
 	src/ports.c dfsch/ports.h	\
 	src/load.c dfsch/load.h		\
 	src/conditions.c dfsch/conditions.h \
 	src/introspect.c dfsch/introspect.h \
-	src/random.c dfsch/random.h
+	src/random.c dfsch/random.h	\	
+	src/writer.c dfsch/writer.h	\
+	src/eqhash.c dfsch/eqhash.h
 
 libdfsch_la_LDFLAGS = -version-info 5:0:0
 libdfsch_la_LIBADD =  -lgc -lpthread -ldl -lm
