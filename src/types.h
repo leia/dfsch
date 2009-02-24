@@ -49,6 +49,8 @@ struct environment_t {
   int is_shared;
   dfsch_eqhash_t values;
   dfsch_object_t* decls;
+  dfsch_object_t* const_names[8];
+  dfsch_object_t* const_values[8];
 };
 
 struct dfsch__stack_frame_t {

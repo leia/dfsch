@@ -2145,11 +2145,20 @@ dfsch_object_t* dfsch_new_frame(dfsch_object_t* parent){
   return (dfsch_object_t*)e;
 }
 
+static size_t ptr_hash3(dfsch_object_t* ptr){
+  return ((size_t)ptr) >> 3 ^ ((size_t)ptr) >> 11;
+}
+
 object_t* dfsch_lookup(object_t* name, object_t* env){
   environment_t *i;
   object_t* ret;
+  size_t h;
 
   i = DFSCH_ASSERT_TYPE(env, DFSCH_ENVIRONMENT_TYPE);
+  h = ptr_hash3(name) & 7;
+  if (((environment_t*)env)->const_names[h] == name){
+    return ((environment_t*)env)->const_values[h];
+  }
   while (i){
     if (i->is_shared){
       goto lock;
@@ -2166,7 +2175,9 @@ object_t* dfsch_lookup(object_t* name, object_t* env){
    DFSCH_RWLOCK_RDLOCK(&environment_rwlock);
   while (i){
     if (dfsch_eqhash_ref(&i->values, name, &ret, NULL, NULL)){
-        DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
+      ((environment_t*)env)->const_names[h] = name;
+      ((environment_t*)env)->const_values[h] = ret;
+      DFSCH_RWLOCK_UNLOCK(&environment_rwlock);
       return ret;
     }
     
