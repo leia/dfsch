@@ -350,12 +350,17 @@ extern "C" {
   
   extern void dfsch_throw(dfsch_object_t* tqag, dfsch_object_t* value);
 
-  /** Convenience wrapper for throwing an exception from C code */
+  /** Convenience wrapper for signaling error condition from C code */
   extern dfsch_object_t* dfsch_error(char* type, 
                                      dfsch_object_t* data);
+  /** Convenience wrapper for signaling recoverable error condition */
+  extern dfsch_object_t* dfsch_cerror(char* type, 
+                                      dfsch_object_t* data);
 
-  /** Set break flag (call this when throwing exception isn't safe) */
-  extern dfsch_object_t* dfsch_break(char* type);
+  /** Apply procedure later in evaluation (useful for signal handlers) */
+  extern void dfsch_async_apply_self(dfsch_object_t* proc);
+  /** Check for pending asynchronous apply */
+  extern void dfsch_async_apply_check();
 
   /* Object properties */
 
