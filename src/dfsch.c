@@ -2413,6 +2413,8 @@ static dfsch_object_t* dfsch_eval_impl(dfsch_object_t* exp,
     object_t *f = DFSCH_FAST_CAR(exp);
 
     if (DFSCH_TYPE_OF(f) == DFSCH_SYMBOL_TYPE){
+      ti->stack_frame->env = env;
+      ti->stack_frame->expr = f;
       f = lookup_impl(f, env, ti);
     } else {
       f = dfsch_eval_impl(f , env, NULL, ti);
@@ -2502,15 +2504,6 @@ static void destructure_impl(dfsch_object_t* llist,
 						 llist, 
 						 list));
   }
-}
-
-dfsch_object_t* dfsch_destructure(dfsch_object_t* arglist,
-                                  dfsch_object_t* list){
-  /*  object_t* hash = dfsch_hash_make(DFSCH_HASH_EQ);
-
-  destructure_impl(arglist, list, hash);
-
-  return hash;*/ // TODO
 }
 
 dfsch_object_t* dfsch_destructuring_bind(dfsch_object_t* arglist, 
@@ -2607,6 +2600,7 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
 
 
   /* f.procedure = proc;
+  f.arguments = args;
   ti->stack_frame = &f;
   */
   /*
