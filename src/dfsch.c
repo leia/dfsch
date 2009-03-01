@@ -524,7 +524,25 @@ dfsch_type_t dfsch_pair_type = {
 };
 #define PAIR (&dfsch_pair_type)
 
-dfsch_type_t dfsch_pair_types[4] = {
+static dfsch_slot_t symbol_slots[] = {
+  DFSCH_STRING_SLOT(symbol_t, data, DFSCH_SLOT_ACCESS_RO),
+  DFSCH_SLOT_TERMINATOR
+};
+
+static void symbol_write(symbol_t* s, dfsch_writer_state_t* state){
+  s = DFSCH_TAG_REF(s);
+  if (s->data){
+    dfsch_write_string(state, s->data);
+  } else {
+    dfsch_write_unreadable(state, s, ""); 
+  }
+}
+dfsch_type_t dfsch_symbol_type = {
+};
+#define SYMBOL DFSCH_SYMBOL_TYPE 
+
+
+dfsch_type_t dfsch_tagged_types[4] = {
   {
     DFSCH_SPECIAL_TYPE,
     DFSCH_IMMUTABLE_PAIR_TYPE,
@@ -548,6 +566,17 @@ dfsch_type_t dfsch_pair_types[4] = {
     NULL
   },
   {
+    DFSCH_STANDARD_TYPE,
+    NULL,
+    sizeof(symbol_t), 
+    "symbol",
+    NULL,
+    (dfsch_type_write_t)symbol_write,
+    NULL,
+    NULL,
+    &symbol_slots
+  },
+  {
     DFSCH_SPECIAL_TYPE,
     DFSCH_PAIR_TYPE,
     sizeof(dfsch_pair_t), 
@@ -558,44 +587,9 @@ dfsch_type_t dfsch_pair_types[4] = {
     (dfsch_type_hash_t)pair_hash,
     NULL
   },
-  {
-    DFSCH_SPECIAL_TYPE,
-    DFSCH_IMMUTABLE_PAIR_TYPE,
-    sizeof(dfsch_pair_t), 
-    "annotated-pair",
-    (dfsch_type_equal_p_t)pair_equal_p,
-    (dfsch_type_write_t)pair_write,
-    NULL,
-    (dfsch_type_hash_t)pair_hash,
-    NULL
-  },
 };
 
 
-static dfsch_slot_t symbol_slots[] = {
-  DFSCH_STRING_SLOT(symbol_t, data, DFSCH_SLOT_ACCESS_RO),
-  DFSCH_SLOT_TERMINATOR
-};
-
-static void symbol_write(symbol_t* s, dfsch_writer_state_t* state){
-  if (s->data){
-    dfsch_write_string(state, s->data);
-  } else {
-    dfsch_write_unreadable(state, s, ""); 
-  }
-}
-dfsch_type_t dfsch_symbol_type = {
-  DFSCH_STANDARD_TYPE,
-  NULL,
-  sizeof(symbol_t), 
-  "symbol",
-  NULL,
-  (dfsch_type_write_t)symbol_write,
-  NULL,
-  NULL,
-  &symbol_slots
-};
-#define SYMBOL DFSCH_SYMBOL_TYPE 
 
 static void primitive_write(dfsch_primitive_t* p, 
                             dfsch_writer_state_t* state){
@@ -800,7 +794,7 @@ dfsch_object_t* dfsch_cons(dfsch_object_t* car, dfsch_object_t* cdr){
   p->car = car;
   p->cdr = cdr;
 
-  return DFSCH_PAIR_ENCODE(p, 0x02);
+  return DFSCH_TAG_ENCODE(p, 1);
 }
 
 dfsch_object_t* dfsch_cons_immutable(dfsch_object_t* car, dfsch_object_t* cdr){
@@ -809,7 +803,7 @@ dfsch_object_t* dfsch_cons_immutable(dfsch_object_t* car, dfsch_object_t* cdr){
   p->car = car;
   p->cdr = cdr;
 
-  return DFSCH_PAIR_ENCODE(p, 0x04);
+  return DFSCH_TAG_ENCODE(p, 3);
 }
 
 
@@ -824,10 +818,10 @@ dfsch_object_t* dfsch_multicons(size_t n){
   p = GC_MALLOC(sizeof(dfsch_pair_t)*n);
 
   for (i = 0; i < (n-1); i++){
-    p[i].cdr = DFSCH_PAIR_ENCODE(&(p[i+1]), 0x02);
+    p[i].cdr = DFSCH_TAG_ENCODE(&(p[i+1]), 1);
   }
 
-  return DFSCH_PAIR_ENCODE(&(p[0]), 0x02);
+  return DFSCH_TAG_ENCODE(&(p[0]), 1);
 }
 
 dfsch_object_t* dfsch_car(dfsch_object_t* pair){
@@ -1043,7 +1037,7 @@ dfsch_object_t* dfsch_list_copy_immutable(dfsch_object_t* list,
                                 dfsch_cdr(list));
   }
 
-  data = GC_MALLOC(sizeof(object_t*)*(len+2));
+  data = GC_MALLOC(sizeof(object_t*)*(len+4));
   
   while (DFSCH_PAIR_P(j)){
     if (i >= len){
@@ -1058,7 +1052,7 @@ dfsch_object_t* dfsch_list_copy_immutable(dfsch_object_t* list,
   i++;
   data[i] = j;
 
-  return DFSCH_PAIR_ENCODE(data, 0x03);
+  return DFSCH_MAKE_CLIST(data);
 }
 
 
@@ -1546,7 +1540,7 @@ static symbol_t* make_symbol(char *symbol){
   symbol_t *s;
   symbol_t *f;
 
-  s = (symbol_t*)dfsch_make_object(SYMBOL); /* !!! free_symbol could be called by this */
+  s = GC_NEW(symbol_t); /* !!! free_symbol could be called by this */
   s->data = stracpy(symbol);
 
   pthread_mutex_lock(&symbol_lock);
@@ -1583,11 +1577,11 @@ void dfsch_unintern(dfsch_object_t* symbol){
 }
 
 dfsch_object_t* dfsch_gensym(){
-  symbol_t *s = (symbol_t*)dfsch_make_object(SYMBOL);
+  symbol_t *s = GC_NEW(symbol_t);
 
   s->data = NULL;
 
-  return (object_t*)s;
+  return DFSCH_TAG_ENCODE(s, 2);
 }
 
 dfsch_object_t* dfsch_make_symbol(char* symbol){
@@ -1610,11 +1604,11 @@ dfsch_object_t* dfsch_make_symbol(char* symbol){
   if (!s)
     s = make_symbol(symbol);
 
-  return (object_t*)s;
+  return DFSCH_TAG_ENCODE(s, 2);
 
 }
 char* dfsch_symbol(dfsch_object_t* symbol){
-  return ((symbol_t*)DFSCH_ASSERT_TYPE(symbol, SYMBOL))->data;
+  return ((symbol_t*)DFSCH_TAG_REF(DFSCH_ASSERT_TYPE(symbol, SYMBOL)))->data;
 }
 
 char* dfsch_symbol_2_typename(dfsch_object_t* symbol){
@@ -2374,12 +2368,9 @@ static dfsch_object_t* dfsch_eval_impl(dfsch_object_t* exp,
                                        environment_t* env,
                                        dfsch_tail_escape_t* esc,
                                        dfsch__thread_info_t* ti);
-static dfsch_object_t* apply_standard_function(closure_t* proc,
-                                               dfsch_object_t* unev_args,
-                                               environment_t* arg_env,
-                                               dfsch__thread_info_t* ti);
 static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc, 
                                         dfsch_object_t* args,
+                                        environment_t* arg_env,
                                         tail_escape_t* esc,
                                         dfsch__thread_info_t* ti);
 
@@ -2404,7 +2395,12 @@ static object_t* eval_list(object_t *list, object_t* env,
 
   i = DFSCH_FAST_CDR(list);
   while (DFSCH_PAIR_P(i)){
-    r = dfsch_eval_impl(DFSCH_FAST_CAR(i), env, NULL, ti);
+    r = DFSCH_FAST_CAR(i);
+    if (DFSCH_SYMBOL_P(r)){
+      r = lookup_impl(r, env, ti);
+    } else {
+      r = dfsch_eval_impl(r, env, NULL, ti);
+    }
 
     t = dfsch_cons(r, NULL);
     DFSCH_FAST_CDR_MUT(p) = (object_t*)t;
@@ -2434,22 +2430,26 @@ static dfsch_object_t* dfsch_eval_impl(dfsch_object_t* exp,
   if (!exp) 
     return NULL;
 
-  if(DFSCH_PAIR_P(exp)){
-    
-    object_t *f = DFSCH_FAST_CAR(exp);
+  if(DFSCH_SYMBOL_P(exp)){
+    return lookup_impl(exp, env, ti);
+  }
 
-    if (DFSCH_TYPE_OF(f) == DFSCH_SYMBOL_TYPE){
-      ti->stack_frame->env = env;
-      ti->stack_frame->expr = f;
+  if(DFSCH_PAIR_P(exp)){
+    object_t *f = DFSCH_FAST_CAR(exp);
+    ti->stack_frame->expr = exp;
+    ti->stack_frame->env = env;
+
+    if (DFSCH_SYMBOL_P(f)){
       f = lookup_impl(f, env, ti);
     } else {
       f = dfsch_eval_impl(f , env, NULL, ti);
     }
 
+    ti->stack_frame->expr = exp;
+    ti->stack_frame->env = env;
+
     
     if (DFSCH_TYPE_OF(f) == FORM){
-      ti->stack_frame->env = env;
-      ti->stack_frame->expr = exp;
       return ((dfsch_form_t*)f)->impl(((dfsch_form_t*)f), 
                                       env, 
                                       DFSCH_FAST_CDR(exp), 
@@ -2457,34 +2457,14 @@ static dfsch_object_t* dfsch_eval_impl(dfsch_object_t* exp,
     }
 
     if (DFSCH_TYPE_OF(f) == MACRO){
-      ti->stack_frame->env = env;
-      ti->stack_frame->expr = exp;
       return dfsch_eval_impl(dfsch_macro_expand(f, DFSCH_FAST_CDR(exp)),
 			     env,
  			     esc,
 			     ti);
     }
 
-    if (!esc && DFSCH_TYPE_OF(f) == DFSCH_STANDARD_FUNCTION_TYPE){
-      return apply_standard_function(f, DFSCH_FAST_CDR(exp), env, ti);
-    }
-
-    args = eval_list(DFSCH_FAST_CDR(exp), env, ti);
-    ti->stack_frame->env = env;
-    ti->stack_frame->expr = exp;
-
-    return dfsch_apply_impl(f, 
-                            args,
-                            esc,
-                            ti);
-    
-    
+    return dfsch_apply_impl(f, DFSCH_FAST_CDR(exp), env, esc, ti);
   }  
-  if(DFSCH_TYPE_OF(exp) == SYMBOL){
-    ti->stack_frame->env = env;
-    ti->stack_frame->expr = exp;
-    return lookup_impl(exp, env, ti);
-  }
 
   
   return exp;
@@ -2598,12 +2578,12 @@ static dfsch_object_t* dfsch_eval_proc_impl(dfsch_object_t* code,
 
   async_apply_check(ti);
   ti->stack_frame->code = code;
-
+  ti->stack_frame->env = env;
+    
   i = code;
 
   while (DFSCH_PAIR_P(i)){
     object_t* exp = DFSCH_FAST_CAR(i); 
-
     if (DFSCH_FAST_CDR(i)) {
       dfsch_eval_impl(exp, env, NULL, ti);
     } else {
@@ -2634,37 +2614,16 @@ dfsch_object_t* dfsch_eval_proc(dfsch_object_t* code, dfsch_object_t* env){
 struct dfsch_tail_escape_t {
   jmp_buf ret;
   object_t *proc;
-  object_t *args; 
+  object_t *args;
+  object_t *arg_env;
 };
 
 /* it might be interesting to optionally disable tail-calls for slight 
  * performance boost (~5%) */
 
-static dfsch_object_t* apply_standard_function(closure_t* proc,
-                                               dfsch_object_t* unev_args,
-                                               environment_t* arg_env,
-                                               dfsch__thread_info_t* ti){
-  dfsch__stack_frame_t f;
-  dfsch_object_t* r;
-  environment_t* env;
-  f.next = ti->stack_frame;
-  f.env = NULL;
-  f.expr = NULL;
-  f.code = NULL;
-  f.procedure = proc;
-  f.arguments = unev_args;
-  ti->stack_frame = &f;
-
-  env = new_frame_impl(proc->env, ti);
-  destructuring_eval(proc->args, unev_args, env, arg_env, ti);
-  r = dfsch_eval_proc_impl(proc->code, env, NULL, ti);
-
-  ti->stack_frame = f.next;
-  return r;
-}
-
 static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc, 
                                         dfsch_object_t* args,
+                                        environment_t* arg_env,
                                         tail_escape_t* esc,
                                         dfsch__thread_info_t* ti){
   //dfsch__stack_frame_t f;
@@ -2674,6 +2633,7 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
   /*if (esc){
     esc->proc = proc;
     esc->args = args;
+    esc->arg_env = arg_env;
     longjmp(esc->ret,1);
     }*/
 
@@ -2685,6 +2645,7 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
   /*  if (setjmp(myesc.ret)){  
     proc = myesc.proc;
     args = myesc.args;
+    arg_env = myesc.arg_env;
     f.tail_recursive = 1;
   } else {
     f.tail_recursive = 0;
@@ -2701,6 +2662,9 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
    */
 
   if (DFSCH_TYPE_OF(proc) == PRIMITIVE){
+    if (arg_env){
+      args = eval_list(args, arg_env, ti);
+    }
     r = ((primitive_t*)proc)->proc(((primitive_t*)proc)->baton,args,
                                    NULL/*&myesc*/);
     goto out;
@@ -2710,9 +2674,11 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
   if (DFSCH_TYPE_OF(proc) == DFSCH_STANDARD_FUNCTION_TYPE){
     environment_t* env = new_frame_impl(((closure_t*) proc)->env,
                                         ti);
-    destructure_impl(((closure_t*)proc)->args,
-                     args,
-                     env);
+    if (arg_env){
+      destructuring_eval(((closure_t*)proc)->args, args, env, arg_env, ti);
+    } else {
+      destructure_impl(((closure_t*)proc)->args, args, env);
+    }
     r = 
       dfsch_eval_proc_impl(((closure_t*)proc)->code,
                            env,
@@ -2722,7 +2688,14 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
   }
 
   if (DFSCH_TYPE_OF(proc)->apply){
+<<<<<<< HEAD:src/dfsch.c
     r = DFSCH_TYPE_OF(proc)->apply(proc, args, NULL /*&myesc*/);
+=======
+    if (arg_env){
+      args = eval_list(args, arg_env, ti);
+    }
+    r = DFSCH_TYPE_OF(proc)->apply(proc, args, &myesc);
+>>>>>>> 0ef22381f7582e7751ac7c5ae1981532a6269ca4:src/dfsch.c
     goto out;
   }
 
@@ -2736,10 +2709,10 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
 dfsch_object_t* dfsch_apply_tr(dfsch_object_t* proc, 
                                dfsch_object_t* args,
                                tail_escape_t* esc){
-  return dfsch_apply_impl(proc, args, esc, dfsch__get_thread_info());
+  return dfsch_apply_impl(proc, args, NULL, esc, dfsch__get_thread_info());
 }
 dfsch_object_t* dfsch_apply(dfsch_object_t* proc, dfsch_object_t* args){
-  return dfsch_apply_impl(proc, args, NULL, dfsch__get_thread_info());
+  return dfsch_apply_impl(proc, args, NULL, NULL, dfsch__get_thread_info());
 }
 
 dfsch_object_t* dfsch_quasiquote(dfsch_object_t* env, dfsch_object_t* arg){
@@ -2797,7 +2770,6 @@ dfsch_object_t* dfsch_make_context(){
   dfsch_define_cstr(ctx, "<pair>", DFSCH_PAIR_TYPE);
   dfsch_define_cstr(ctx, "<mutable-pair>", DFSCH_MUTABLE_PAIR_TYPE);
   dfsch_define_cstr(ctx, "<immutable-pair>", DFSCH_IMMUTABLE_PAIR_TYPE);
-  dfsch_define_cstr(ctx, "<annotated-pair>", DFSCH_ANNOTATED_PAIR_TYPE);
   dfsch_define_cstr(ctx, "<empty-list>", DFSCH_EMPTY_LIST_TYPE);
   dfsch_define_cstr(ctx, "<symbol>", DFSCH_SYMBOL_TYPE);
   dfsch_define_cstr(ctx, "<primitive>", DFSCH_PRIMITIVE_TYPE);
