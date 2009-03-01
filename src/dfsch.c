@@ -2151,12 +2151,13 @@ void dfsch_unset_property(dfsch_object_t* o,
 
 static dfsch_rwlock_t environment_rwlock = DFSCH_RWLOCK_INITIALIZER;
 
-static environment_t* new_frame_impl(environment_t* parent){
+static environment_t* new_frame_impl(environment_t* parent,
+                                     dfsch__thread_info_t* ti){
   environment_t* e = (environment_t*)dfsch_make_object(DFSCH_ENVIRONMENT_TYPE);
 
   dfsch_eqhash_init(&e->values, 0);
   e->decls = NULL;
-  e->owner = dfsch__get_thread_info();
+  e->owner = ti;
   e->parent = (environment_t*)parent;
     
   return (dfsch_object_t*)e;
@@ -2167,7 +2168,8 @@ dfsch_object_t* dfsch_new_frame(dfsch_object_t* parent){
   if (parent){
     parent = DFSCH_ASSERT_TYPE(parent, DFSCH_ENVIRONMENT_TYPE);
   }
-  return (dfsch_object_t*)new_frame_impl((environment_t*)parent);
+  return (dfsch_object_t*)new_frame_impl((environment_t*)parent,
+                                         dfsch__get_thread_info());
 }
 
 static object_t* lookup_impl(object_t* name, 
@@ -2653,12 +2655,9 @@ static dfsch_object_t* apply_standard_function(closure_t* proc,
   f.arguments = unev_args;
   ti->stack_frame = &f;
 
-  env = new_frame_impl(((closure_t*) proc)->env);
+  env = new_frame_impl(proc->env, ti);
   destructuring_eval(proc->args, unev_args, env, arg_env, ti);
-  r = dfsch_eval_proc_impl(((closure_t*)proc)->code,
-                           env,
-                           NULL,
-                           ti);
+  r = dfsch_eval_proc_impl(proc->code, env, NULL, ti);
 
   ti->stack_frame = f.next;
   return r;
@@ -2709,7 +2708,8 @@ static dfsch_object_t* dfsch_apply_impl(dfsch_object_t* proc,
   }
 
   if (DFSCH_TYPE_OF(proc) == DFSCH_STANDARD_FUNCTION_TYPE){
-    environment_t* env = new_frame_impl(((closure_t*) proc)->env);
+    environment_t* env = new_frame_impl(((closure_t*) proc)->env,
+                                        ti);
     destructure_impl(((closure_t*)proc)->args,
                      args,
                      env);
